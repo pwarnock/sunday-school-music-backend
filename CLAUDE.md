@@ -103,6 +103,7 @@ echo "$ELEVENLABS_API_KEY" | vercel env add ELEVENLABS_API_KEY production
 3. **AI Integration**: Gloo AI for chat, ElevenLabs for music generation
 4. **Credit System**: 3 free songs per user
 5. **Authentication**: Supabase Auth with redirect URLs configured
+6. **Documentation**: Context7 MCP available for library documentation lookup
 
 ## Auth Configuration
 
