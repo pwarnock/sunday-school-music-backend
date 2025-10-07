@@ -66,3 +66,13 @@ Run any command with automatic token refresh:
 2. If expired or missing, fetches new token using get_gloo_access_token.sh
 3. Caches token for 1 hour (with 5-minute refresh buffer)
 4. Automatically detects local vs cloud environment based on .env contents
+
+## Testing Credits
+
+By default, new users get 3 free credits for creating songs. For testing purposes, you can update your credits to 99 using the provided script:
+
+```bash
+./update-credits.sh your-email@example.com
+```
+
+**Note**: This requires Supabase CLI and database access. The default for new users remains 3 credits.
