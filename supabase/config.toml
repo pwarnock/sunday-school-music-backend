@@ -120,10 +120,11 @@ objects_path = "./audio"
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "https://frontend-one-tau-55.vercel.app"
+site_url = "https://frontend-1l3d90euj-pete-warnocks-projects.vercel.app"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 additional_redirect_urls = [
-  "https://frontend-one-tau-55.vercel.app",
+  "https://frontend-1l3d90euj-pete-warnocks-projects.vercel.app",
+  "https://*.vercel.app",
   "http://127.0.0.1:3000"
 ]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
@@ -187,14 +188,14 @@ otp_length = 6
 otp_expiry = 3600
 
 # Use a production-ready SMTP server
-# [auth.email.smtp]
-# enabled = true
-# host = "smtp.sendgrid.net"
-# port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+[auth.email.smtp]
+enabled = true
+host = "smtp.resend.com"
+port = 587
+user = "resend"
+pass = "env(RESEND_API_KEY)"
+admin_email = "noreply@yourdomain.com"
+sender_name = "Sunday School Music Creator"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
