@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Opencode wrapper with automatic token refresh
+# This ensures opencode always has a fresh token
+
+# Get the directory of this script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source the token manager
+source "$SCRIPT_DIR/token-manager.sh"
+
+# Refresh token before running opencode
+if get_gloo_token; then
+    # Run opencode with all passed arguments
+    exec opencode "$@"
+else
+    echo "Failed to get Gloo token" >&2
+    exit 1
+fi

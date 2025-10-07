@@ -1,0 +1,24 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "gloo": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Gloo",
+      "models": {
+        "us.anthropic.claude-sonnet-4-20250514-v1:0": {
+          "name": "Claude Sonnet 4"
+        },
+        "us.anthropic.claude-opus-4-20250514-v1:0": {
+          "name": "Claude Opus 4"
+        }
+      },
+      "options": {
+        "apiKey": "{env:CLIENT_ACCESS_TOKEN}",
+        "baseURL": "https://platform.ai.gloo.com/ai/v1",
+        "headers": {
+          "Authorization": "Bearer {env:CLIENT_ACCESS_TOKEN}"
+        }
+      }
+    }
+  }
+}
