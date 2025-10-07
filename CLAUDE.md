@@ -21,6 +21,7 @@ Required environment variables:
 - `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key
 - `GLOO_CLIENT_ID` - Gloo AI client ID
 - `GLOO_CLIENT_SECRET` - Gloo AI client secret
+- `GLOO_MODEL` - Gloo AI model to use (defaults to us.anthropic.claude-sonnet-4-20250514-v1:0)
 - `ELEVENLABS_API_KEY` - ElevenLabs API key
 
 ## Quick Setup
@@ -93,6 +94,7 @@ echo "$SUPABASE_URL" | vercel env add NEXT_PUBLIC_SUPABASE_URL production
 echo "$SUPABASE_ANON_KEY" | vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY production
 echo "$GLOO_CLIENT_ID" | vercel env add GLOO_CLIENT_ID production
 echo "$GLOO_CLIENT_SECRET" | vercel env add GLOO_CLIENT_SECRET production
+echo "$GLOO_MODEL" | vercel env add GLOO_MODEL production
 echo "$ELEVENLABS_API_KEY" | vercel env add ELEVENLABS_API_KEY production
 ```
 
@@ -100,7 +102,7 @@ echo "$ELEVENLABS_API_KEY" | vercel env add ELEVENLABS_API_KEY production
 
 1. **Frontend**: Next.js (deployed on Vercel)
 2. **Backend**: Supabase (PostgreSQL + Auth + Realtime + Storage)
-3. **AI Integration**: Gloo AI for chat, ElevenLabs for music generation
+3. **AI Integration**: Gloo AI for chat (configurable model), ElevenLabs for music generation
 4. **Credit System**: 3 free songs per user
 5. **Authentication**: Supabase Auth with redirect URLs configured
 6. **Documentation**: Context7 MCP available for library documentation lookup
@@ -114,10 +116,34 @@ Supabase auth is configured with:
   - `https://*.vercel.app` (all Vercel deployments)
   - `http://127.0.0.1:3000` (local development)
 
+## AI Model Configuration
+
+The chat model is configurable via the `GLOO_MODEL` environment variable. Available models include:
+- `us.anthropic.claude-sonnet-4-20250514-v1:0` (default)
+- `meta.llama3-70b-instruct-v1:0`
+- `anthropic.claude-3-sonnet-20240229-v1:0`
+- `anthropic.claude-3-haiku-20240307-v1:0`
+
+You can change the model by:
+1. Setting `GLOO_MODEL` in your `.env` file
+2. Using the `setModel()` method on the glooClient instance
+3. Setting the environment variable in your deployment platform
+
+Example:
+```bash
+# In .env file
+GLOO_MODEL=us.anthropic.claude-sonnet-4-20250514-v1:0
+
+# Or programmatically
+import { glooClient } from '@/lib/gloo/client'
+glooClient.setModel('us.anthropic.claude-sonnet-4-20250514-v1:0')
+```
+
 ## Current Status
 
 - [x] Database schema created
 - [x] Production domain configured
+- [x] Configurable AI model implementation
 - [ ] Supabase project linked to remote
 - [ ] Environment variables synced to Vercel
 - [ ] Authentication flow tested
