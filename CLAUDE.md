@@ -15,14 +15,25 @@ We use multiple environments for proper development workflow:
 
 All credentials are stored in `.env` file in the project root.
 
+**IMPORTANT**: Only Supabase URL and anon key are safe to expose to the browser with `NEXT_PUBLIC_` prefix. All other credentials must remain server-side only.
+
 Required environment variables:
-- `SUPABASE_URL` - Supabase project URL
-- `SUPABASE_ANON_KEY` - Supabase anonymous key  
-- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key
-- `GLOO_CLIENT_ID` - Gloo AI client ID
-- `GLOO_CLIENT_SECRET` - Gloo AI client secret
+- `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL (safe to expose to browser)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anonymous key (safe to expose to browser)
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (server-side only)
+- `GLOO_CLIENT_ID` - Gloo AI client ID (server-side only)
+- `GLOO_CLIENT_SECRET` - Gloo AI client secret (server-side only)
 - `GLOO_MODEL` - Gloo AI model to use (defaults to us.anthropic.claude-sonnet-4-20250514-v1:0)
-- `ELEVENLABS_API_KEY` - ElevenLabs API key
+- `ELEVENLABS_API_KEY` - ElevenLabs API key (server-side only)
+
+Optional feature flags:
+- `ENABLE_SCRIPTURE_API` - Enable external Scripture API for Bible verse content (default: false)
+
+### Environment Variable Security Check
+```bash
+# Run this to verify environment variables are properly set
+cd frontend && npm run env-check
+```
 
 ## Quick Setup
 
@@ -139,14 +150,31 @@ import { glooClient } from '@/lib/gloo/client'
 glooClient.setModel('us.anthropic.claude-sonnet-4-20250514-v1:0')
 ```
 
+## Chat Features
+
+### Multi-Turn Bible Reference Handling
+The chat system properly handles multiple Bible verses across conversation turns:
+
+- **Conversation Context**: Preserves up to 400 characters per message to maintain Bible references
+- **Reference Extraction**: Automatically identifies all Bible references from conversation history
+- **Comprehensive Integration**: When generating songs, the AI considers ALL Bible references mentioned throughout the conversation
+- **Reference Preservation**: Bible references are explicitly listed in the system prompt
+- **Graceful Fallback**: When `ENABLE_SCRIPTURE_API=false` (default), references are listed without fetching verse content to avoid external API dependency
+
+### System Prompt Structure
+- **Initial Prompt**: Sets the Sunday School assistant context and guidelines
+- **Follow-up**: Maintains conversation history and cumulative Bible references
+- **Context Building**: Includes previous messages with preserved Bible verse content
+
 ## Current Status
 
 - [x] Database schema created
 - [x] Production domain configured
 - [x] Configurable AI model implementation
+- [x] Environment variables properly configured
+- [x] Multi-turn Bible reference handling
+- [x] Chat interface with conversation context
+- [x] Gloo AI integration working
 - [ ] Supabase project linked to remote
-- [ ] Environment variables synced to Vercel
 - [ ] Authentication flow tested
-- [ ] Chat interface
-- [ ] Gloo AI integration
 - [ ] ElevenLabs integration
