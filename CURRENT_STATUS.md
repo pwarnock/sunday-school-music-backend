@@ -1,6 +1,6 @@
 # Sunday School Music Creator - Current Status
 
-## Date: October 7, 2025
+## Date: October 8, 2025
 
 ### What's Working
 - Local development server is running
@@ -9,6 +9,7 @@
 - Supabase authentication is protecting the chat endpoints
 - Bible reference detection and integration
 - Multi-turn conversation context preservation
+- **NEW: Configurable time limit feature for music generation (30/60/90/120 seconds)**
 
 ### What's Been Lost/Changed
 1. **OpenAI SDK Integration** - Removed because it wasn't compatible with Gloo's API format (422 errors)
@@ -28,6 +29,8 @@
 - `/api/chat-enhanced` - Main chat endpoint with Bible reference support
 - `/api/gloo/token` - OAuth2 token endpoint (exists but unused)
 - `/api/songs` - Song management endpoints
+- `/api/music-config` - Music generation configuration endpoint (NEW)
+- `/api/generate-music` - Music generation with duration validation (UPDATED)
 
 ### Security Considerations
 - The `/api/gloo/token` endpoint is unprotected (anyone can get a token)
@@ -60,3 +63,20 @@ ENABLE_SCRIPTURE_API= # Optional, defaults to false
 ```
 
 The core functionality is working - users can chat with the AI assistant and create Sunday School songs. The main trade-off was simplicity over flexibility (direct fetch instead of SDK).
+
+### New Features (October 8, 2025)
+
+#### Time Limit Feature
+- **Database**: Added `music_generation_config` table to store max duration settings
+- **Configuration**: System defaults to 60 seconds, configurable to 30/60/90/120 seconds
+- **UI Component**: Created `DurationSelector` component with large, accessible buttons
+- **Validation**: Server-side validation ensures users can't exceed configured limits
+- **Analytics**: Tracks duration selection attempts and limit violations
+- **User Experience**: Clear feedback when duration is limited, auto-adjusts to max allowed
+
+#### Implementation Details
+1. **Migration**: `20251008145421_add_music_generation_config.sql` creates necessary tables
+2. **API Endpoint**: `/api/music-config` returns current max duration setting
+3. **Dashboard Integration**: Duration selector appears before "Save & Generate Music" button
+4. **Credit System**: Maintains 1 credit per generation regardless of duration
+5. **Error Handling**: Graceful fallback to 60 seconds if configuration is missing

@@ -166,6 +166,14 @@ The chat system properly handles multiple Bible verses across conversation turns
 - **Follow-up**: Maintains conversation history and cumulative Bible references
 - **Context Building**: Includes previous messages with preserved Bible verse content
 
+## Development Notes
+
+### File Write Limitations
+When creating or editing large documentation files, be aware of potential timeout issues with file write operations. If you encounter timeouts:
+- Break large documents into smaller chunks (< 1KB per write operation)
+- Save incrementally rather than writing entire documents at once
+- Use the Edit tool for modifications rather than rewriting entire files
+
 ## Current Status
 
 - [x] Database schema created
