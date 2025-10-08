@@ -2,14 +2,14 @@
 
 ## Production Deployment
 
-**Current Production Domain**: `frontend-1l3d90euj-pete-warnocks-projects.vercel.app` (latest deployment)
+**Current Production Domain**: `https://frontend-one-tau-55.vercel.app` (primary production URL)
 
 ## Environment Management
 
 We use multiple environments for proper development workflow:
 
 - **Local**: `http://127.0.0.1:3000` (Next.js dev server)
-- **Production**: `https://frontend-94z8sl5v1-pete-warnocks-projects.vercel.app` (Vercel deployment)
+- **Production**: `https://frontend-one-tau-55.vercel.app` (Vercel deployment)
 
 ## Credentials Management
 
@@ -121,9 +121,9 @@ echo "$ELEVENLABS_API_KEY" | vercel env add ELEVENLABS_API_KEY production
 ## Auth Configuration
 
 Supabase auth is configured with:
-- **Site URL**: `https://frontend-94z8sl5v1-pete-warnocks-projects.vercel.app`
+- **Site URL**: `https://frontend-one-tau-55.vercel.app`
 - **Redirect URLs**: 
-  - `https://frontend-94z8sl5v1-pete-warnocks-projects.vercel.app` (production)
+  - `https://frontend-one-tau-55.vercel.app` (production)
   - `https://*.vercel.app` (all Vercel deployments)
   - `http://127.0.0.1:3000` (local development)
 
