@@ -1,0 +1,1379 @@
+<!DOCTYPE html>
+<!-- saved from url=(0012)about:srcdoc -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.13/html-to-image.min.js" integrity="sha512-iZ2ORl595Wx6miw+GuadDet4WQbdSWS3JLMoNfY8cRGoEFy6oT3G9IbcrBeL6AfkgpA51ETt/faX6yLV+/gFJg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script>
+      (function() {
+        const originalConsole = window.console;
+        window.console = {
+          log: (...args) => {
+            originalConsole.log(...args);
+            window.parent.postMessage({ type: 'console', message: args.join(' ') }, '*');
+          },
+          error: (...args) => {
+            originalConsole.error(...args);
+            window.parent.postMessage({ type: 'console', message: 'Error: ' + args.join(' ') }, '*');
+          },
+          warn: (...args) => {
+            originalConsole.warn(...args);
+            window.parent.postMessage({ type: 'console', message: 'Warning: ' + args.join(' ') }, '*');
+          }
+        };
+
+        let requestId = 0;
+        let callbacksMap = new Map();
+        let streamControllers = new Map();
+        
+        window.claude = {
+          complete: (prompt) => {
+            return new Promise((resolve, reject) => {
+              const id = requestId++;
+              callbacksMap.set(id, { resolve, reject });
+              window.parent.postMessage({ type: 'claudeComplete', id, prompt }, '*');
+            });
+          }
+        };
+
+        window.storage = {
+          get: (key, shared = false) => {
+            return new Promise((resolve, reject) => {
+              const id = requestId++;
+              callbacksMap.set(id, { resolve, reject });
+              window.parent.postMessage({ type: 'storageGet', id, key, shared }, '*');
+            });
+          },
+          set: (key, value, shared = false) => {
+            return new Promise((resolve, reject) => {
+              const id = requestId++;
+              callbacksMap.set(id, { resolve, reject });
+              window.parent.postMessage({ type: 'storageSet', id, key, value, shared }, '*');
+            });
+          },
+          delete: (key, shared = false) => {
+            return new Promise((resolve, reject) => {
+              const id = requestId++;
+              callbacksMap.set(id, { resolve, reject });
+              window.parent.postMessage({ type: 'storageDelete', id, key, shared }, '*');
+            });
+          },
+          list: (prefix, shared = false) => {
+            return new Promise((resolve, reject) => {
+              const id = requestId++;
+              callbacksMap.set(id, { resolve, reject });
+              window.parent.postMessage({ type: 'storageList', id, prefix, shared }, '*');
+            });
+          }
+        };
+
+        let pendingBlobs = new Map();
+        URL.createObjectURL = (blob) => {
+          // Store the blob and create an ID and URL for it
+          const blobId = `blob-${Date.now()}-${Math.random()}`;
+          pendingBlobs.set(blobId, blob);
+          return `blob-request://${blobId}`;
+        };
+
+        URL.revokeObjectURL = (url) => {
+          // Remove the blob from our store
+          const blobId = url.replace("blob-request://", "");
+          pendingBlobs.delete(blobId);
+        };
+
+        const getBlobFromURL = (url) => {
+          const blobId = url.replace("blob-request://", "");
+          return pendingBlobs.get(blobId);
+        };
+
+        // Override global fetch with streaming support
+        window.fetch = (url, init = {}) => {
+          return new Promise((resolve, reject) => {
+            const id = requestId++;
+            const channelId = `fetch-${id}-${Date.now()}`;
+            
+            callbacksMap.set(id, { 
+              resolve: (response) => {
+                // Create a ReadableStream for the response body
+                const stream = new ReadableStream({
+                  start(controller) {
+                    streamControllers.set(channelId, controller);
+                  },
+                  cancel() {
+                    streamControllers.delete(channelId);
+                  }
+                });
+                
+                // Create and return the Response with the stream
+                resolve(new Response(stream, {
+                  status: response.status,
+                  statusText: response.statusText,
+                  headers: response.headers
+                }));
+              },
+              reject,
+              channelId
+            });
+            
+            window.parent.postMessage({
+              type: 'proxyFetch',
+              id,
+              url,
+              init,
+              channelId
+            }, '*');
+          });
+        };
+
+        window.addEventListener('message', async (event) => {
+          if (event.data.type === 'takeScreenshot') {
+            const rootElement = document.getElementById('artifacts-component-root-html');
+            if (!rootElement) {
+              window.parent.postMessage({
+                type: 'screenshotError',
+                error: new Error('Root element not found'),
+              }, '*');
+            }
+            const screenshot = await htmlToImage.toPng(rootElement, {
+              imagePlaceholder:
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAA1JREFUGFdjePDgwX8ACOQDoNsk0PMAAAAASUVORK5CYII=",
+            });
+            window.parent.postMessage({
+              type: 'screenshotData',
+              data: screenshot,
+            }, '*');
+          } else if (event.data.type === 'claudeComplete') {
+            const callback = callbacksMap.get(event.data.id);
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.completion);
+            }
+            callbacksMap.delete(event.data.id);
+          } else if (event.data.type === 'proxyFetchResponse') {
+            const callback = callbacksMap.get(event.data.id);
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+              callbacksMap.delete(event.data.id);
+            } else {
+              // Initial response with headers, status, etc.
+              callback.resolve({
+                status: event.data.status,
+                statusText: event.data.statusText,
+                headers: event.data.headers
+              });
+              // Don't delete the callback yet if streaming
+              if (!event.data.body) {
+                callbacksMap.delete(event.data.id);
+              }
+            }
+          } else if (event.data.type === 'proxyFetchStream') {
+            // Handle streaming data chunks
+            const controller = streamControllers.get(event.data.channelId);
+            if (controller) {
+              if (event.data.error) {
+                controller.error(new Error(event.data.error));
+                streamControllers.delete(event.data.channelId);
+              } else if (event.data.done) {
+                controller.close();
+                streamControllers.delete(event.data.channelId);
+                // Clean up the callback
+                const callback = Array.from(callbacksMap.entries()).find(
+                  ([_, value]) => value.channelId === event.data.channelId
+                );
+                if (callback) {
+                  callbacksMap.delete(callback[0]);
+                }
+              } else if (event.data.chunk) {
+                controller.enqueue(new Uint8Array(event.data.chunk));
+              }
+            }
+          } else if (event.data.type === 'storageGet') {
+            const callback = callbacksMap.get(event.data.id);
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.result);
+            }
+            callbacksMap.delete(event.data.id);
+          } else if (event.data.type === 'storageSet') {
+            const callback = callbacksMap.get(event.data.id);
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.result);
+            }
+            callbacksMap.delete(event.data.id);
+          } else if (event.data.type === 'storageDelete') {
+            const callback = callbacksMap.get(event.data.id);
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.result);
+            }
+            callbacksMap.delete(event.data.id);
+          } else if (event.data.type === 'storageList') {
+            const callback = callbacksMap.get(event.data.id);
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.result);
+            }
+            callbacksMap.delete(event.data.id);
+          }
+        });
+
+        window.addEventListener('click', (event) => {
+          const isEl = event.target instanceof HTMLElement;
+          if (!isEl) return;
+    
+          // find ancestor links
+          const linkEl = event.target.closest("a");
+          if (!linkEl || !linkEl.href) return;
+    
+          event.preventDefault();
+          event.stopImmediatePropagation();
+    
+          if (linkEl.href.startsWith("blob-request:")) {
+            const blob = getBlobFromURL(linkEl.href);
+            if (!blob) return;
+            void blob.arrayBuffer().then((data) => {
+              window.parent.postMessage({
+                type: "downloadFile",
+                filename: linkEl.download,
+                data,
+                mimeType: blob.type || "application/octet-stream",
+              });
+            });
+          } else if (linkEl.href.startsWith("data:")) {
+            const [header, base64Data] = linkEl.href.split(",");
+            const mimeMatch = header.match(/data:([^;]+)/);
+            const mimeType = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+            const binaryString = atob(base64Data);
+            const data = Uint8Array.from(binaryString, (c) =>
+              c.charCodeAt(0),
+            ).buffer;
+            window.parent.postMessage({
+              type: "downloadFile",
+              filename: linkEl.download,
+              data,
+              mimeType,
+            });
+          } else {
+            let linkUrl;
+            try {
+              linkUrl = new URL(linkEl.href);
+            } catch (error) {
+              return;
+            }
+    
+            if (linkUrl.hostname === window.location.hostname) return;
+      
+            window.parent.postMessage({
+              type: 'openExternal',
+              href: linkEl.href,
+            }, '*');
+          }
+      });
+
+        const originalOpen = window.open;
+        window.open = function (url) {
+          window.parent.postMessage({
+            type: "openExternal",
+            href: url,
+          }, "*");
+        };
+
+        window.addEventListener('error', (event) => {
+          window.parent.postMessage({ type: 'console', message: 'Uncaught Error: ' + event.message }, '*');
+        });
+      })();
+    </script>
+  
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sunday School Music Creator - AI-Powered Songs for Children's Ministry</title>
+    <script src="https://cdn.tailwindcss.com/"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com/">
+    <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&amp;family=Lora:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --primary: #4ade80;
+            --primary-dark: #22c55e;
+            --secondary: #0ea5e9;
+            --accent: #fbbf24;
+            --dark: #1e293b;
+            --light: #f8fafc;
+        }
+        
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: #ffffff;
+            color: #1e293b;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+        
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+        
+        .nav-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 3rem;
+            align-items: center;
+        }
+        
+        .nav-links a {
+            color: #64748b;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: color 0.3s;
+        }
+        
+        .nav-links a:hover {
+            color: var(--primary);
+        }
+        
+        .btn {
+            padding: 0.875rem 2rem;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+            cursor: pointer;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            box-shadow: 0 4px 20px rgba(74, 222, 128, 0.4);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(74, 222, 128, 0.5);
+        }
+        
+        .btn-secondary {
+            background: transparent;
+            color: var(--dark);
+            border: 2px solid #e2e8f0;
+        }
+        
+        .btn-secondary:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+        
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            padding-top: 100px;
+            background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%);
+        }
+        
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 30%, rgba(74, 222, 128, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 60%, rgba(14, 165, 233, 0.08) 0%, transparent 50%);
+            pointer-events: none;
+        }
+        
+        .hero-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6rem;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .hero-text h1 {
+            font-size: 5rem;
+            font-weight: 900;
+            line-height: 1.1;
+            margin-bottom: 2rem;
+            letter-spacing: -0.03em;
+        }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .hero-text p {
+            font-size: 1.375rem;
+            line-height: 1.7;
+            color: #64748b;
+            margin-bottom: 3rem;
+            font-weight: 400;
+        }
+        
+        .hero-buttons {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 4rem;
+        }
+        
+        .hero-stats {
+            display: flex;
+            gap: 4rem;
+        }
+        
+        .stat {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .stat-icon {
+            font-size: 2.5rem;
+        }
+        
+        .stat-text {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .stat-label {
+            font-size: 0.875rem;
+            color: #94a3b8;
+            font-weight: 500;
+        }
+        
+        .stat-value {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--dark);
+        }
+        
+        /* Hero Visual */
+        .hero-visual {
+            position: relative;
+        }
+        
+        .demo-card {
+            background: white;
+            border-radius: 24px;
+            padding: 3rem;
+            box-shadow: 
+                0 0 0 1px rgba(0, 0, 0, 0.05),
+                0 20px 60px rgba(0, 0, 0, 0.1),
+                0 40px 100px rgba(0, 0, 0, 0.08);
+            position: relative;
+            animation: float 6s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(-1deg); }
+        }
+        
+        .demo-step {
+            margin-bottom: 1.5rem;
+            padding: 1.5rem;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+            transition: all 0.3s;
+        }
+        
+        .demo-step:hover {
+            transform: translateX(8px);
+        }
+        
+        .step-icon {
+            font-size: 2.5rem;
+            flex-shrink: 0;
+        }
+        
+        .step-content h4 {
+            font-size: 1.125rem;
+            font-weight: 700;
+            margin-bottom: 0.375rem;
+        }
+        
+        .step-content p {
+            font-size: 0.9rem;
+            color: #64748b;
+            margin: 0;
+        }
+        
+        .step-1 { background: linear-gradient(135deg, #f0f9ff, #e0f2fe); }
+        .step-2 { background: linear-gradient(135deg, #f0fdf4, #dcfce7); }
+        .step-3 { background: linear-gradient(135deg, #eff6ff, #dbeafe); }
+        .step-4 { background: linear-gradient(135deg, #fefce8, #fef9c3); }
+        
+        /* Section Spacing */
+        section {
+            padding: 10rem 0;
+        }
+        
+        .section-header {
+            text-align: center;
+            margin-bottom: 6rem;
+        }
+        
+        .section-header h2 {
+            font-size: 3.75rem;
+            font-weight: 900;
+            line-height: 1.2;
+            margin-bottom: 1.5rem;
+            letter-spacing: -0.02em;
+        }
+        
+        .section-header p {
+            font-size: 1.375rem;
+            color: #64748b;
+            max-width: 700px;
+            margin: 0 auto;
+            line-height: 1.7;
+        }
+        
+        /* Features Grid */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 3rem;
+        }
+        
+        .feature-card {
+            background: white;
+            padding: 3rem;
+            border-radius: 24px;
+            border: 1px solid #f1f5f9;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+        
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 24px;
+            padding: 2px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            opacity: 0;
+            transition: opacity 0.4s;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12);
+        }
+        
+        .feature-card:hover::before {
+            opacity: 1;
+        }
+        
+        .feature-icon {
+            font-size: 4rem;
+            margin-bottom: 2rem;
+            display: block;
+        }
+        
+        .feature-card h3 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+        
+        .feature-card p {
+            color: #64748b;
+            line-height: 1.8;
+            font-size: 1.05rem;
+        }
+        
+        /* How It Works */
+        .steps-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 3rem;
+            position: relative;
+        }
+        
+        .steps-container::before {
+            content: '';
+            position: absolute;
+            top: 60px;
+            left: 12.5%;
+            right: 12.5%;
+            height: 2px;
+            background: linear-gradient(90deg, 
+                var(--primary) 0%, 
+                var(--primary) 25%, 
+                var(--secondary) 50%, 
+                var(--secondary) 75%, 
+                var(--accent) 100%
+            );
+            opacity: 0.3;
+        }
+        
+        .step-card {
+            text-align: center;
+            position: relative;
+        }
+        
+        .step-number {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            font-weight: 900;
+            margin: 0 auto 2rem;
+            box-shadow: 0 10px 40px rgba(74, 222, 128, 0.4);
+            position: relative;
+            z-index: 1;
+        }
+        
+        .step-card:nth-child(2) .step-number {
+            background: linear-gradient(135deg, var(--secondary), #0284c7);
+            box-shadow: 0 10px 40px rgba(14, 165, 233, 0.4);
+        }
+        
+        .step-card:nth-child(3) .step-number {
+            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+            box-shadow: 0 10px 40px rgba(139, 92, 246, 0.4);
+        }
+        
+        .step-card:nth-child(4) .step-number {
+            background: linear-gradient(135deg, var(--accent), #f59e0b);
+            box-shadow: 0 10px 40px rgba(251, 191, 36, 0.4);
+        }
+        
+        .step-emoji {
+            font-size: 3rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .step-card h3 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+        
+        .step-card p {
+            color: #64748b;
+            line-height: 1.8;
+            font-size: 1.05rem;
+        }
+        
+        /* Use Cases */
+        .use-cases-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 3rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .use-case {
+            background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+            padding: 4rem;
+            border-radius: 32px;
+            border: 1px solid #e2e8f0;
+            transition: all 0.4s;
+        }
+        
+        .use-case:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+            background: linear-gradient(135deg, #ffffff, #f8fafc);
+        }
+        
+        .use-case-icon {
+            font-size: 4rem;
+            margin-bottom: 2rem;
+        }
+        
+        .use-case h3 {
+            font-size: 1.875rem;
+            font-weight: 800;
+            margin-bottom: 1.25rem;
+        }
+        
+        .use-case p {
+            color: #64748b;
+            line-height: 1.8;
+            font-size: 1.125rem;
+        }
+        
+        /* Pricing */
+        .pricing-card {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 32px;
+            padding: 4rem;
+            border: 3px solid var(--primary);
+            box-shadow: 0 30px 80px rgba(74, 222, 128, 0.2);
+            position: relative;
+        }
+        
+        .pricing-badge {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, var(--accent), #f59e0b);
+            color: var(--dark);
+            padding: 0.75rem 2.5rem;
+            border-radius: 100px;
+            font-weight: 800;
+            font-size: 0.95rem;
+            box-shadow: 0 8px 24px rgba(251, 191, 36, 0.4);
+        }
+        
+        .pricing-header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        .pricing-header h3 {
+            font-size: 2.5rem;
+            font-weight: 900;
+            margin-bottom: 2rem;
+        }
+        
+        .pricing-amount {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .pricing-number {
+            font-size: 6rem;
+            font-weight: 900;
+            line-height: 1;
+            color: var(--primary);
+        }
+        
+        .pricing-label {
+            font-size: 1.5rem;
+            color: #64748b;
+            font-weight: 600;
+        }
+        
+        .pricing-features {
+            list-style: none;
+            margin-bottom: 3rem;
+        }
+        
+        .pricing-features li {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            padding: 1.25rem 0;
+            font-size: 1.125rem;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        
+        .pricing-features li:last-child {
+            border-bottom: none;
+        }
+        
+        .check-icon {
+            color: var(--primary);
+            font-size: 1.75rem;
+            font-weight: 900;
+            flex-shrink: 0;
+        }
+        
+        /* CTA Section */
+        .cta-section {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark), var(--secondary));
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .cta-section::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 50%, rgba(255, 255, 255, 0.08) 0%, transparent 50%);
+        }
+        
+        .cta-content {
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .cta-content h2 {
+            font-size: 4rem;
+            font-weight: 900;
+            color: white;
+            margin-bottom: 2rem;
+            line-height: 1.2;
+        }
+        
+        .cta-content p {
+            font-size: 1.5rem;
+            color: rgba(255, 255, 255, 0.9);
+            margin-bottom: 3rem;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.7;
+        }
+        
+        .cta-buttons {
+            display: flex;
+            gap: 1.5rem;
+            justify-content: center;
+            margin-bottom: 4rem;
+        }
+        
+        .btn-white {
+            background: white;
+            color: var(--primary);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+        
+        .btn-white:hover {
+            background: #f8fafc;
+        }
+        
+        .btn-outline-white {
+            background: transparent;
+            color: white;
+            border: 2px solid white;
+        }
+        
+        .btn-outline-white:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .cta-stats {
+            display: flex;
+            gap: 4rem;
+            justify-content: center;
+            color: white;
+        }
+        
+        .cta-stat {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.125rem;
+        }
+        
+        .cta-stat-icon {
+            font-size: 2rem;
+        }
+        
+        /* Footer */
+        footer {
+            background: #0f172a;
+            color: #cbd5e1;
+            padding: 5rem 0 3rem;
+        }
+        
+        .footer-content {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr;
+            gap: 4rem;
+            margin-bottom: 4rem;
+        }
+        
+        .footer-brand h3 {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: white;
+            margin-bottom: 1rem;
+        }
+        
+        .footer-brand p {
+            color: #94a3b8;
+            line-height: 1.8;
+        }
+        
+        .footer-column h4 {
+            color: white;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            font-size: 1.125rem;
+        }
+        
+        .footer-column ul {
+            list-style: none;
+        }
+        
+        .footer-column ul li {
+            margin-bottom: 1rem;
+        }
+        
+        .footer-column ul li a {
+            color: #94a3b8;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+        
+        .footer-column ul li a:hover {
+            color: var(--primary);
+        }
+        
+        .footer-bottom {
+            padding-top: 3rem;
+            border-top: 1px solid #1e293b;
+            text-align: center;
+            color: #64748b;
+        }
+        
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .hero-content {
+                grid-template-columns: 1fr;
+                gap: 4rem;
+            }
+            
+            .hero-text h1 {
+                font-size: 3.5rem;
+            }
+            
+            .features-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .steps-container {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .steps-container::before {
+                display: none;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+            
+            .hero-text h1 {
+                font-size: 2.5rem;
+            }
+            
+            .hero-text p {
+                font-size: 1.125rem;
+            }
+            
+            .hero-buttons {
+                flex-direction: column;
+            }
+            
+            .hero-stats {
+                flex-direction: column;
+                gap: 2rem;
+            }
+            
+            .section-header h2 {
+                font-size: 2.5rem;
+            }
+            
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .steps-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .use-cases-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .footer-content {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body id="artifacts-component-root-html">
+    <!-- Navigation -->
+    <nav>
+        <div class="nav-content">
+            <div class="logo">
+                <span style="font-size: 2rem;">🎵</span>
+                <span>Sunday School Music</span>
+            </div>
+            <div class="nav-links">
+                <a href="https://www.claudeusercontent.com/artifact/fe5c2fd3-1d33-4abe-9c04-ca36d02dd830?errorReportingMode=parent#features">Features</a>
+                <a href="https://www.claudeusercontent.com/artifact/fe5c2fd3-1d33-4abe-9c04-ca36d02dd830?errorReportingMode=parent#how-it-works">How It Works</a>
+                <a href="https://www.claudeusercontent.com/artifact/fe5c2fd3-1d33-4abe-9c04-ca36d02dd830?errorReportingMode=parent#pricing">Pricing</a>
+                <a href="https://www.claudeusercontent.com/signin">Sign In</a>
+                <a href="https://www.claudeusercontent.com/signup" class="btn btn-primary">Get Started Free</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <div class="hero-text">
+                    <h1>
+                        Create Epic Songs for <span class="gradient-text">Sunday School</span>
+                    </h1>
+                    <p>
+                        Transform any Bible story into engaging, memorable songs with AI. Complete with lyrics and music. No musical experience needed.
+                    </p>
+                    <div class="hero-buttons">
+                        <a href="https://www.claudeusercontent.com/signup" class="btn btn-primary" style="padding: 1.25rem 3rem; font-size: 1.125rem;">
+                            🚀 Start Creating Free
+                        </a>
+                        <a href="https://www.claudeusercontent.com/artifact/fe5c2fd3-1d33-4abe-9c04-ca36d02dd830?errorReportingMode=parent#how-it-works" class="btn btn-secondary" style="padding: 1.25rem 3rem; font-size: 1.125rem;">
+                            See How It Works
+                        </a>
+                    </div>
+                    <div class="hero-stats">
+                        <div class="stat">
+                            <div class="stat-icon">✨</div>
+                            <div class="stat-text">
+                                <div class="stat-label">Free to Start</div>
+                                <div class="stat-value">3 Songs Included</div>
+                            </div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-icon">⚡</div>
+                            <div class="stat-text">
+                                <div class="stat-label">Fast Results</div>
+                                <div class="stat-value">Under 2 Minutes</div>
+                            </div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-icon">📖</div>
+                            <div class="stat-text">
+                                <div class="stat-label">Ages</div>
+                                <div class="stat-value">5-10 Years Old</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="hero-visual">
+                    <div class="demo-card">
+                        <div class="demo-step step-1">
+                            <div class="step-icon">💬</div>
+                            <div class="step-content">
+                                <h4>Share Your Idea</h4>
+                                <p>"Make a song about Noah's Ark"</p>
+                            </div>
+                        </div>
+                        <div class="demo-step step-2">
+                            <div class="step-icon">✍️</div>
+                            <div class="step-content">
+                                <h4>AI Writes Lyrics</h4>
+                                <p>Biblical, age-appropriate content</p>
+                            </div>
+                        </div>
+                        <div class="demo-step step-3">
+                            <div class="step-icon">🎵</div>
+                            <div class="step-content">
+                                <h4>Generate Music</h4>
+                                <p>Full song with melody &amp; vocals</p>
+                            </div>
+                        </div>
+                        <div class="demo-step step-4">
+                            <div class="step-icon">🎉</div>
+                            <div class="step-content">
+                                <h4>Ready to Teach!</h4>
+                                <p>Use in class or at home</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features">
+        <div class="container">
+            <div class="section-header">
+                <h2>Powerful Features for <span class="gradient-text">Ministry Leaders</span></h2>
+                <p>Everything you need to create engaging, biblical songs that children will love and remember</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <span class="feature-icon">🤖</span>
+                    <h3>AI-Powered Creation</h3>
+                    <p>Describe any Bible story or lesson, and our AI generates complete lyrics and music automatically. It's like having a professional songwriter on your team.</p>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon">📖</span>
+                    <h3>Bible Integration</h3>
+                    <p>Every song is rooted in Scripture. Reference actual Bible verses and ensure theologically sound, age-appropriate content for children.</p>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon">👶</span>
+                    <h3>Perfect for Kids</h3>
+                    <p>Designed specifically for ages 5-10 with simple melodies, clear lyrics, and engaging rhythms that help children learn and remember.</p>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon">⚡</span>
+                    <h3>Lightning Fast</h3>
+                    <p>Get complete songs in under 2 minutes. Perfect for busy teachers who need quality content without spending hours creating it.</p>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon">💾</span>
+                    <h3>Your Song Library</h3>
+                    <p>Save, organize, and manage all your custom songs in one place. Regenerate music anytime or edit lyrics as needed.</p>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon">🎓</span>
+                    <h3>Zero Skills Needed</h3>
+                    <p>No musical training required. If you can describe a Bible story, you can create an amazing song. We handle the rest.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section id="how-it-works" style="background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);">
+        <div class="container">
+            <div class="section-header">
+                <h2>From Idea to Song in <span class="gradient-text">4 Simple Steps</span></h2>
+                <p>Creating professional Sunday School songs has never been this easy</p>
+            </div>
+            <div class="steps-container">
+                <div class="step-card">
+                    <div class="step-number">1</div>
+                    <div class="step-emoji">📝</div>
+                    <h3>Share Your Vision</h3>
+                    <p>Tell our AI about the Bible story, lesson, or theme you want to teach your class</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">2</div>
+                    <div class="step-emoji">✨</div>
+                    <h3>AI Creates Lyrics</h3>
+                    <p>Get biblically accurate, age-appropriate lyrics generated instantly by our AI</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">3</div>
+                    <div class="step-emoji">🎵</div>
+                    <h3>Generate Music</h3>
+                    <p>Transform your lyrics into a complete song with professional AI-generated music</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">4</div>
+                    <div class="step-emoji">🎉</div>
+                    <h3>Teach &amp; Inspire</h3>
+                    <p>Download your song and use it in Sunday School, VBS, or at home with your family</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Use Cases -->
+    <section style="background: white;">
+        <div class="container">
+            <div class="section-header">
+                <h2>Built for <span class="gradient-text">Every Ministry</span></h2>
+                <p>No matter your role, we've got you covered</p>
+            </div>
+            <div class="use-cases-grid">
+                <div class="use-case">
+                    <div class="use-case-icon">👩‍🏫</div>
+                    <h3>Sunday School Teachers</h3>
+                    <p>Create engaging songs that help children remember Bible stories and lessons week after week. Make your class the one kids can't wait to attend.</p>
+                </div>
+                <div class="use-case">
+                    <div class="use-case-icon">⛪</div>
+                    <h3>Ministry Leaders</h3>
+                    <p>Produce original worship and teaching music for your entire children's ministry program. Build a library of custom songs unique to your church.</p>
+                </div>
+                <div class="use-case">
+                    <div class="use-case-icon">🏖️</div>
+                    <h3>VBS Coordinators</h3>
+                    <p>Generate custom songs for each day of Vacation Bible School that perfectly match your weekly themes and keep kids engaged all week long.</p>
+                </div>
+                <div class="use-case">
+                    <div class="use-case-icon">👨‍👩‍👧‍👦</div>
+                    <h3>Parents at Home</h3>
+                    <p>Teach Bible lessons at home with fun, memorable songs your kids will love. Make devotional time something your family looks forward to.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing -->
+    <section id="pricing" style="background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);">
+        <div class="container">
+            <div class="section-header">
+                <h2>Start Creating <span class="gradient-text">Completely Free</span></h2>
+                <p>No credit card required. No hidden fees. Just great music.</p>
+            </div>
+            <div class="pricing-card">
+                <div class="pricing-badge">🎉 FREE TO START</div>
+                <div class="pricing-header">
+                    <h3>Get Started Today</h3>
+                    <div class="pricing-amount">
+                        <div class="pricing-number">3</div>
+                        <div class="pricing-label">Free<br>Songs</div>
+                    </div>
+                </div>
+                <ul class="pricing-features">
+                    <li>
+                        <span class="check-icon">✓</span>
+                        <span>Create 3 complete songs with lyrics and AI-generated music</span>
+                    </li>
+                    <li>
+                        <span class="check-icon">✓</span>
+                        <span>Full access to AI chat and Bible verse integration</span>
+                    </li>
+                    <li>
+                        <span class="check-icon">✓</span>
+                        <span>Save all your songs to your personal library</span>
+                    </li>
+                    <li>
+                        <span class="check-icon">✓</span>
+                        <span>Age-appropriate content designed for kids 5-10</span>
+                    </li>
+                    <li>
+                        <span class="check-icon">✓</span>
+                        <span>No credit card required to get started</span>
+                    </li>
+                </ul>
+                <a href="https://www.claudeusercontent.com/signup" class="btn btn-primary" style="width: 100%; text-align: center; padding: 1.5rem; font-size: 1.125rem;">
+                    Start Creating Free Songs Now
+                </a>
+                <p style="text-align: center; margin-top: 2rem; color: #64748b; font-size: 1rem;">
+                    Purchase additional credits after your free songs
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section">
+        <div class="container">
+            <div class="cta-content">
+                <h2>Ready to Transform Your Sunday School?</h2>
+                <p>Join hundreds of teachers creating engaging, biblical songs that help children learn and love God's Word.</p>
+                <div class="cta-buttons">
+                    <a href="https://www.claudeusercontent.com/signup" class="btn btn-white" style="padding: 1.5rem 3rem; font-size: 1.25rem;">
+                        🚀 Get 3 Free Songs Now
+                    </a>
+                    <a href="https://www.claudeusercontent.com/artifact/fe5c2fd3-1d33-4abe-9c04-ca36d02dd830?errorReportingMode=parent#how-it-works" class="btn btn-outline-white" style="padding: 1.5rem 3rem; font-size: 1.25rem;">
+                        Learn More
+                    </a>
+                </div>
+                <div class="cta-stats">
+                    <div class="cta-stat">
+                        <div class="cta-stat-icon">✨</div>
+                        <span>No credit card required</span>
+                    </div>
+                    <div class="cta-stat">
+                        <div class="cta-stat-icon">⚡</div>
+                        <span>Start creating in 2 minutes</span>
+                    </div>
+                    <div class="cta-stat">
+                        <div class="cta-stat-icon">📖</div>
+                        <span>100% Bible-based content</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <h3>🎵 Sunday School Music</h3>
+                    <p>AI-powered music creation for children's ministry. Helping teachers create engaging, biblical songs that children love.</p>
+                </div>
+                <div class="footer-column">
+                    <h4>Product</h4>
+                    <ul>
+                        <li><a href="https://www.claudeusercontent.com/artifact/fe5c2fd3-1d33-4abe-9c04-ca36d02dd830?errorReportingMode=parent#features">Features</a></li>
+                        <li><a href="https://www.claudeusercontent.com/artifact/fe5c2fd3-1d33-4abe-9c04-ca36d02dd830?errorReportingMode=parent#how-it-works">How It Works</a></li>
+                        <li><a href="https://www.claudeusercontent.com/artifact/fe5c2fd3-1d33-4abe-9c04-ca36d02dd830?errorReportingMode=parent#pricing">Pricing</a></li>
+                    </ul>
+                </div>
+                <div class="footer-column">
+                    <h4>Company</h4>
+                    <ul>
+                        <li><a href="https://www.claudeusercontent.com/about">About Us</a></li>
+                        <li><a href="https://www.claudeusercontent.com/contact">Contact</a></li>
+                        <li><a href="https://www.claudeusercontent.com/support">Support</a></li>
+                    </ul>
+                </div>
+                <div class="footer-column">
+                    <h4>Legal</h4>
+                    <ul>
+                        <li><a href="https://www.claudeusercontent.com/terms">Terms of Service</a></li>
+                        <li><a href="https://www.claudeusercontent.com/privacy">Privacy Policy</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>© 2024 Sunday School Music Creator. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+</body></html>
