@@ -4,6 +4,13 @@
 # Exit on error, unset vars, and fail on pipe errors
 (return 0 2>/dev/null) || set -euo pipefail
 
+# Load .env file if it exists
+if [ -f .env ]; then
+  set -a
+  source .env
+  set +a
+fi
+
 # Get credentials from environment variables (provided by op run or shell)
 
 # Ensure GLOO_CLIENT_ID and GLOO_CLIENT_SECRET are set
@@ -33,12 +40,12 @@ export CLIENT_ID="$GLOO_CLIENT_ID"
 export CLIENT_SECRET="$GLOO_CLIENT_SECRET"
 
 # Debug: Show base64-encoded Authorization header
-AUTH_HEADER=$(printf "%s:%s" "$CLIENT_ID" "$CLIENT_SECRET" | base64)
+AUTH_HEADER=$(printf "%s:%s" "$CLIENT_ID" "$CLIENT_SECRET" | base64 -w 0)
 if [[ $DEBUG -eq 1 ]]; then
   echo "Authorization header: Basic ${AUTH_HEADER:0:6}******${AUTH_HEADER: -6}"
 fi
 
-# Request token and extract it with jq
+# Request token and extract it with sed (fallback if jq not available)
 RESPONSE=$(curl -s -X POST \
   https://platform.ai.gloo.com/oauth2/token \
   -H 'Content-Type: application/x-www-form-urlencoded' \
@@ -50,7 +57,13 @@ if [[ $DEBUG -eq 1 ]]; then
   echo "Full response: $RESPONSE"
 fi
 
-CLIENT_ACCESS_TOKEN=$(echo "$RESPONSE" | jq -r '.access_token')
+# Try jq first, fallback to sed if jq not available
+if command -v jq >/dev/null 2>&1; then
+  CLIENT_ACCESS_TOKEN=$(echo "$RESPONSE" | jq -r '.access_token')
+else
+  # Extract access_token using sed (assumes simple JSON format)
+  CLIENT_ACCESS_TOKEN=$(echo "$RESPONSE" | sed -n 's/.*"access_token"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p')
+fi
 
 if [ -z "${CLIENT_ACCESS_TOKEN:-}" ] || [ "$CLIENT_ACCESS_TOKEN" = "null" ]; then
   echo "Error: Failed to retrieve access token"
