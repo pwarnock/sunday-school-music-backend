@@ -23,7 +23,7 @@ Required environment variables:
 - `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (server-side only)
 - `GLOO_CLIENT_ID` - Gloo AI client ID (server-side only)
 - `GLOO_CLIENT_SECRET` - Gloo AI client secret (server-side only)
-- `GLOO_MODEL` - Gloo AI model to use (defaults to us.anthropic.claude-sonnet-4-20250514-v1:0)
+- `GLOO_MODEL` - Gloo AI model to use (currently set to GlooMax-Beacon)
 - `ELEVENLABS_API_KEY` - ElevenLabs API key (server-side only)
 
 Optional feature flags:
@@ -131,6 +131,7 @@ Supabase auth is configured with:
 
 The chat model is configurable via the `GLOO_MODEL` environment variable. Available models include:
 - `us.anthropic.claude-sonnet-4-20250514-v1:0` (default)
+- `GlooMax-Beacon` (Gloo's flagship model)
 - `meta.llama3-70b-instruct-v1:0`
 - `anthropic.claude-3-sonnet-20240229-v1:0`
 - `anthropic.claude-3-haiku-20240307-v1:0`
@@ -143,11 +144,11 @@ You can change the model by:
 Example:
 ```bash
 # In .env file
-GLOO_MODEL=us.anthropic.claude-sonnet-4-20250514-v1:0
+GLOO_MODEL=GlooMax-Beacon
 
 # Or programmatically
 import { glooClient } from '@/lib/gloo/client'
-glooClient.setModel('us.anthropic.claude-sonnet-4-20250514-v1:0')
+glooClient.setModel('GlooMax-Beacon')
 ```
 
 ## Chat Features
