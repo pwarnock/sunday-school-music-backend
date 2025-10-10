@@ -25,6 +25,7 @@ Required environment variables:
 - `GLOO_CLIENT_SECRET` - Gloo AI client secret (server-side only)
 - `GLOO_MODEL` - Gloo AI model to use (currently set to GlooMax-Beacon)
 - `ELEVENLABS_API_KEY` - ElevenLabs API key (server-side only)
+- `ELEVENLABS_PROMPT_VERSION` - ElevenLabs prompt version to use (optional, defaults to "1.0")
 
 Optional feature flags:
 - `ENABLE_SCRIPTURE_API` - Enable external Scripture API for Bible verse content (default: false)
@@ -107,6 +108,7 @@ echo "$GLOO_CLIENT_ID" | vercel env add GLOO_CLIENT_ID production
 echo "$GLOO_CLIENT_SECRET" | vercel env add GLOO_CLIENT_SECRET production
 echo "$GLOO_MODEL" | vercel env add GLOO_MODEL production
 echo "$ELEVENLABS_API_KEY" | vercel env add ELEVENLABS_API_KEY production
+echo "$ELEVENLABS_PROMPT_VERSION" | vercel env add ELEVENLABS_PROMPT_VERSION production
 ```
 
 ## Architecture Notes
@@ -175,6 +177,35 @@ When creating or editing large documentation files, be aware of potential timeou
 - Save incrementally rather than writing entire documents at once
 - Use the Edit tool for modifications rather than rewriting entire files
 
+## ElevenLabs Prompt System
+
+The ElevenLabs music generation prompts are now versioned and customizable:
+
+- **Prompt Location**: `/src/lib/prompts/elevenlabs/music-v{version}.md`
+- **Default Version**: 1.0 (configurable via `ELEVENLABS_PROMPT_VERSION`)
+- **Template System**: Uses Mustache-like syntax for dynamic values
+- **Mood/Energy Mappings**: Defined in the markdown files
+- **Truncation Priority**: Configurable order for handling long prompts
+
+### Testing Prompts
+```bash
+# Test ElevenLabs prompt loading
+cd frontend && node scripts/test-elevenlabs-prompt.js
+
+# Check current prompt version
+cd frontend && node scripts/elevenlabs-prompt-version.js
+
+# Mock server testing (once implemented)
+# Terminal 1: Start mock server
+cd frontend && node scripts/mock-elevenlabs-server.js
+
+# Terminal 2: Run tests against mock
+cd frontend && ELEVENLABS_MOCK_URL=http://localhost:3001 npm test:elevenlabs
+
+# Terminal 3: View captured requests
+curl http://localhost:3001/requests | jq
+```
+
 ## Current Status
 
 - [x] Database schema created
@@ -184,6 +215,7 @@ When creating or editing large documentation files, be aware of potential timeou
 - [x] Multi-turn Bible reference handling
 - [x] Chat interface with conversation context
 - [x] Gloo AI integration working
+- [x] ElevenLabs versioned prompt system
 - [ ] Supabase project linked to remote
 - [ ] Authentication flow tested
 - [ ] ElevenLabs integration
