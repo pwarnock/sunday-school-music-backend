@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@sunday-school/lib'
+import { createBrowserClient } from '@sunday-school/lib'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -25,7 +25,7 @@ export default function Login() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      setSupabase(createClient())
+      setSupabase(createBrowserClient())
     }
   }, [])
 

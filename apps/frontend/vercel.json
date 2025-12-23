@@ -1,4 +1,7 @@
 {
-  "buildCommand": "next build",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "installCommand": "command -v bun >/dev/null 2>&1 || (curl -fsSL https://bun.sh/install | bash) && export BUN_INSTALL=\"$HOME/.bun\" && export PATH=\"$BUN_INSTALL/bin:$PATH\" && cd ../.. && bun install --bun-pm",
+  "buildCommand": "export BUN_INSTALL=\"$HOME/.bun\" && export PATH=\"$BUN_INSTALL/bin:$PATH\" && cd ../.. && bunx turbo build --filter=@sunday-school/frontend",
   "outputDirectory": ".next"
 }

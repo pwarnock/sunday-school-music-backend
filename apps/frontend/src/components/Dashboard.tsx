@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@sunday-school/lib'
+import { createBrowserClient } from '@sunday-school/lib'
 import { User } from '@supabase/supabase-js'
 import Image from 'next/image'
 import ChatInterface from './ChatInterface'
@@ -44,7 +44,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [generatingMusic, setGeneratingMusic] = useState<string | null>(null)
   const [selectedDuration, setSelectedDuration] = useState(60)
   const [maxDuration, setMaxDuration] = useState(60)
-  const supabase = createClient()
+  const supabase = createBrowserClient()
   
   // Track user activity for streaks (only if feature is enabled)
   const streaksEnabled = process.env.NEXT_PUBLIC_ENABLE_DAILY_STREAKS === 'true'

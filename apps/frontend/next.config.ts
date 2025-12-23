@@ -1,11 +1,12 @@
+import path from 'path'
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  // Exclude packages from transpilation - they're already built separately
-  transpilePackages: [],
-  
-  // Fix for workspace monorepo
-  outputFileTracingRoot: process.cwd(),
+  // Workspaces ship source/ESM; Next needs to transpile them.
+  transpilePackages: ['@sunday-school/lib', '@sunday-school/ui'],
+
+  // Ensure serverless tracing can include workspace files.
+  outputFileTracingRoot: path.join(process.cwd(), '..', '..'),
 }
 
 export default nextConfig
