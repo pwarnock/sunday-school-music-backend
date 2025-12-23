@@ -29,3 +29,5 @@ build/
 .next/
 out/frontend/
 .vercel
+.env*.local
+.turbo/

@@ -38,43 +38,288 @@
 - Missing `getTokenDirect` method reference mentioned in CURRENT_STATUS.md
 - OpenAI SDK imports that are no longer needed
 
-## 🚀 **Recommended Next Steps (In Priority Order)**
+## 📦 Monorepo Structure
 
-### **Option 1: Clean Up & Polish (30 minutes - Recommended)**
-**Why**: Clean codebase improves maintainability and deployment reliability
-**Tasks**:
-1. Fix ESLint errors in check-env.js
-2. Remove unused variables and imports
-3. Clean up unused API endpoints
-4. Update documentation
+### ✅ **Completed**
+- Converted to Bun workspaces monorepo
+- Separated code into `apps/` and `packages/` directories
+- Shared packages: `@sunday-school/ui`, `@sunday-school/lib`, `@sunday-school/db`
+- All imports updated to use workspace packages
+- Build and deployment configuration updated
+- Documentation updated for monorepo workflow
 
-### **Option 2: User Experience Enhancements (2-4 hours)**
-**Why**: Improve user satisfaction and retention
-**Potential features**:
-- Add loading states and better error handling
-- Implement song editing/revision capabilities  
-- Add song sharing or export features
-- Improve mobile responsiveness
-- Add keyboard shortcuts for power users
+### Directory Layout
 
-### **Option 3: New Features (4-8 hours)**
-**Why**: Add value and differentiate the product
-**Potential features**:
-- User feedback system for generated songs
-- Song categories or tagging system
-- Favorites/bookmarking system
-- Admin dashboard for managing credits/limits
-- Batch song generation
-- Custom themes beyond light/dark
+```
+sunday-school-music-creator/
+├── apps/
+│   └── frontend/              # Next.js application (Vercel deployment target)
+├── packages/
+│   ├── ui/                   # Shared React components
+│   ├── lib/                   # Shared library (supabase, gloo, elevenlabs, bible, prompts)
+│   └── db/                    # Database scripts and migrations
+├── package.json               # Root workspace configuration
+└── bun.lockb               # Bun lockfile
+```
 
-### **Option 4: Performance & Scaling (2-6 hours)**
-**Why**: Prepare for growth and improve user experience
-**Tasks**:
-- Optimize bundle size analysis
-- Add caching strategies for API calls
-- Implement analytics and monitoring
-- Add performance monitoring
-- Optimize image loading and assets
+### Root Package.json
+
+The root `package.json` configures Bun workspaces:
+
+```json
+{
+  "name": "sunday-school-music-creator",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"]
+}
+```
+
+### Workspace Dependencies
+
+Packages in `/apps/` directory reference shared packages using `workspace:*` syntax:
+
+```json
+// apps/frontend/package.json
+{
+  "dependencies": {
+    "@sunday-school/ui": "workspace:*",
+    "@sunday-school/lib": "workspace:*"
+  }
+}
+```
+
+## Development Workflow
+
+### Starting Development Server
+
+Run from **project root** to ensure all workspaces are recognized:
+
+```bash
+bun run dev
+```
+
+This command starts Next.js dev server in `apps/frontend/`.
+
+### Building for Production
+
+```bash
+bun run build
+```
+
+This builds the frontend application and generates the `.next` directory.
+
+## Vercel Deployment Configuration
+
+### Overview
+
+Vercel's build environment uses `npm install` by default, which doesn't support Bun's `workspace:*` dependencies. To deploy to Vercel, we use a custom configuration that skips `npm install` and uses Bun for building.
+
+### Vercel Configuration File
+
+`apps/frontend/vercel.json` configures Vercel to work with Bun workspaces:
+
+```json
+{
+  "buildCommand": "bun run build",
+  "outputDirectory": ".next",
+  "installCommand": "echo 'Skipping npm install - using local bun.lockb'"
+}
+```
+
+**Key points:**
+- `installCommand`: Skips npm install since dependencies are already installed locally
+- `buildCommand`: Uses Bun to build application
+- `outputDirectory`: Specifies where Next.js outputs to build
+
+### Deployment Process
+
+```bash
+# Option 1: Build and deploy from project root
+bun run build
+vercel --prod
+
+# Option 2: Build and deploy from apps/frontend (recommended)
+cd apps/frontend && bun run build && vercel --prod
+```
+
+### Keeping Production Domain
+
+To maintain `frontend-pete-warnocks-projects.vercel.app`:
+1. Project name in Vercel: `frontend` (under `pete-warnocks-projects` team)
+2. Production URL: `https://frontend-pete-warnocks-projects.vercel.app`
+
+### Next.js Configuration for Monorepo
+
+If Next.js can't transpile packages from outside the project root, configure `transpilePackages` in `next.config.ts`:
+
+```typescript
+// apps/frontend/next.config.ts
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  transpilePackages: ['@sunday-school/ui'],
+};
+
+export default nextConfig;
+```
+
+## Common Patterns
+
+### Adding a New Shared Package
+
+1. Create package directory under `packages/`
+2. Create `package.json` with appropriate dependencies
+3. Export from `index.ts`:
+   ```typescript
+   export * from './my-feature'
+   ```
+4. Import in `apps/frontend/package.json`:
+   ```json
+   {
+     "dependencies": {
+       "@sunday-school/my-feature": "workspace:*"
+     }
+   }
+   ```
+5. Run `bun install` from project root
+6. Restart dev server: `bun run dev`
+
+### Importing from Shared Packages
+
+In your application code:
+
+```typescript
+import { MyComponent } from '@sunday-school/my-feature'
+
+export function MyPage() {
+  return <MyComponent />
+}
+```
+
+## Troubleshooting
+
+### Vercel Deployment: "npm error Unsupported URL Type 'workspace:': workspace:*"
+
+**Cause**: Vercel tries to run `npm install` which doesn't understand Bun's workspace syntax.
+
+**Solution**: Always build locally before deploying:
+```bash
+cd apps/frontend && bun run build && vercel --prod
+```
+
+The `vercel.json` configuration file handles skipping the `npm install` step.
+
+### Build Failures in Monorepo
+
+If you encounter build errors after adding a new package:
+
+1. **Check circular dependencies**: Ensure packages don't depend on each other
+2. **Verify package names**: All workspace packages must have unique names
+3. **Clear caches**:
+   ```bash
+   rm -rf node_modules
+   rm -f bun.lockb
+   bun install
+   ```
+4. **Run install from root**: Always run `bun install` from project root, not from individual package directories
+
+### Type Errors with Workspace Packages
+
+If TypeScript can't find types from a workspace package:
+
+1. Ensure to package exports types in its `package.json`:
+   ```json
+   {
+     "name": "@sunday-school/ui",
+     "types": "./index.ts"
+   }
+   ```
+2. Ensure root `tsconfig.json` has correct paths:
+   ```json
+   {
+     "compilerOptions": {
+       "paths": {
+         "@sunday-school/*": ["./packages/*/src"]
+       }
+     }
+   }
+   ```
+3. Restart TypeScript server if using VS Code
+
+### Environment Variable Security
+
+- **Never commit**: Never commit `.env` file or any API keys
+- **Use Vercel Dashboard**: Set production secrets via Vercel dashboard for better security
+- **Use `.gitignore`**: Ensure `.env` is in `.gitignore` (it should be by default)
+- **Workspace-Specific Considerations**:
+   - **Package Imports**: Use `@sunday-school/ui` or `@sunday-school/lib` from `apps/frontend/package.json`
+   - **Local Development**: Run `bun run dev` from project root, not from `apps/frontend`
+   - **Building**: Run `bun run build` from project root for consistency
+
+---
+
+## Quick Reference Commands
+
+### Development
+
+```bash
+# Development (from project root)
+bun run dev
+
+# Build for production (from project root)
+bun run build
+
+# Test build locally
+cd apps/frontend && bun run build
+ls -la apps/frontend/.next
+```
+
+### Deployment
+
+```bash
+# Build and deploy to Vercel
+cd apps/frontend && bun run build && vercel --prod
+
+# Set environment variables via Vercel CLI
+vercel env add NEXT_PUBLIC_SUPABASE_URL production
+vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY production
+vercel env ls
+```
+
+### Testing
+
+```bash
+# Test build locally
+cd apps/frontend && bun run build
+
+# Verify production build output
+ls -la apps/frontend/.next
+```
+
+---
+
+## Current Status
+
+- [x] Monorepo structure created
+- [x] Bun workspaces configured
+- [x] All imports updated to use workspace packages
+- [x] Build and deployment configuration updated
+- [x] Documentation updated for monorepo workflow
+
+---
+
+## Next Steps
+
+- [ ] Test all deployment features (auth, music generation, chat)
+- [ ] Verify environment variables are properly set in production
+- [ ] Update API routes to use monorepo structure
+- [ ] Consider setting up CI/CD with GitHub Actions
+- [ ] Update performance monitoring and error tracking
+
+---
+
+*Last updated: December 22, 2025*
 
 ## 📋 **Quick Reference Commands**
 

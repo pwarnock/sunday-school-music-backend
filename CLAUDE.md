@@ -77,21 +77,26 @@ supabase gen types typescript --local > src/lib/supabase/types.ts
 ```
 
 ### Vercel CLI Commands
+
+```bash
+# Monorepo Deployment with Bun Workspaces
+
+# Build locally with Bun (from project root)
+bun run build
+
+# Deploy to Vercel (from apps/frontend)
+cd apps/frontend && bun run build && vercel --prod
+```
+
+### Traditional Deployment Commands
+
 ```bash
 # Link project to Vercel
 vercel link
 
-# Deploy to preview
-vercel
-
-# Deploy to production
-vercel --prod
-
 # Set environment variables
 vercel env add SUPABASE_URL production
 vercel env add SUPABASE_ANON_KEY production
-
-# List environment variables
 vercel env ls
 ```
 
