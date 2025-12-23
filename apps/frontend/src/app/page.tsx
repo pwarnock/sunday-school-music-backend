@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation'
 
+// Force dynamic rendering to avoid caching
 export const dynamic = 'force-dynamic'
 
-export default async function RootPage() {
-  // Redirect to home page - authentication will be handled client-side
+// Simple redirect to home page
+export default function RootPage() {
   redirect('/home')
 }
