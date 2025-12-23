@@ -1,19 +1,11 @@
-import { redirect } from 'next/navigation'
-import { createClient } from '@sunday-school/lib'
 import Footer from '@/components/landing/Footer'
 
-export default async function AppLayout({
+export default function AppLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/login')
-  }
-
+  // Auth check is now handled by individual components (e.g., Dashboard)
   return (
     <div className="min-h-screen flex flex-col">
       <div className="flex-1">
