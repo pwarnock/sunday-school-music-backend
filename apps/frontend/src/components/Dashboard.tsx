@@ -1,7 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
 import { createClient } from '@sunday-school/lib'
 import { User } from '@supabase/supabase-js'
 import Image from 'next/image'
@@ -15,7 +14,7 @@ import { siteConfig } from '@sunday-school/lib'
 import { useStreakTracker } from '@/hooks/useStreakTracker'
 
 interface DashboardProps {
-  user?: User
+  user: User
 }
 
 interface UserProfile {
@@ -32,9 +31,7 @@ interface Song {
   created_at: string
 }
 
-export default function Dashboard({ user: propUser }: DashboardProps = {}) {
-  const router = useRouter()
-  const [user, setUser] = useState<User | null>(propUser || null)
+export default function Dashboard({ user }: DashboardProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [showChat, setShowChat] = useState(false)
@@ -56,32 +53,11 @@ export default function Dashboard({ user: propUser }: DashboardProps = {}) {
   })
 
   useEffect(() => {
-    // Check authentication on mount
-    async function checkAuth() {
-      if (propUser) {
-        setUser(propUser)
-        return
-      }
-
-      const { data: { user }, error } = await supabase.auth.getUser()
-      if (error || !user) {
-        router.push('/login')
-        return
-      }
-      setUser(user)
-    }
-    
-    checkAuth()
-  }, [propUser, supabase, router])
-
-  useEffect(() => {
-    if (!user) return
-
     async function getProfile() {
       const { data, error } = await supabase
         .from('users_profile')
         .select('credits_remaining, email')
-        .eq('id', user!.id)
+        .eq('id', user.id)
         .single()
 
       if (data) {
@@ -100,7 +76,7 @@ export default function Dashboard({ user: propUser }: DashboardProps = {}) {
 
     getProfile()
     getSongs()
-  }, [user !== null, supabase])
+  }, [user.id, supabase])
 
   useEffect(() => {
     const fetchConfig = async () => {

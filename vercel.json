@@ -2,6 +2,5 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "turbo build --filter=@sunday-school/frontend",
   "outputDirectory": "apps/frontend/.next",
-  "installCommand": "bun install",
-  "bunVersion": "1"
+  "installCommand": "bun install"
 }
