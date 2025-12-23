@@ -1,3 +1,5 @@
+'use client'
+
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@sunday-school/lib'
@@ -79,7 +81,7 @@ export default function Dashboard({ user: propUser }: DashboardProps = {}) {
       const { data, error } = await supabase
         .from('users_profile')
         .select('credits_remaining, email')
-        .eq('id', user.id)
+        .eq('id', user!.id)
         .single()
 
       if (data) {
@@ -98,7 +100,7 @@ export default function Dashboard({ user: propUser }: DashboardProps = {}) {
 
     getProfile()
     getSongs()
-  }, [user?.id, supabase])
+  }, [user !== null, supabase])
 
   useEffect(() => {
     const fetchConfig = async () => {
